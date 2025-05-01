@@ -1,0 +1,16 @@
+{
+    "iflytek": {
+        "asr": {
+            "appid": "xxxxxx",
+            "api_secret": "xxxxxx",
+            "api_key": "xxxxxx"
+        },
+        "spark": {
+            "appid": "xxxxxx",
+            "api_secret": "xxxxxx",
+            "api_key": "xxxxxx",
+            "sparkai_url": "wss://spark-api.xf-yun.com/v4.0/chat",
+            "sparkai_domain": "4.0Ultra"
+        }
+    }
+}
