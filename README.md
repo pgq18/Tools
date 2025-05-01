@@ -9,8 +9,7 @@ Fill `config.json` with your own config before using.
 ### ASR
 #### iFLYTEK
 ```bash
-# pythom 3.8+
-pip install --upgrade spark_ai_python
+pip install cffi gevent greenlet pycparser six websocket websocket-client pyaudio keyboard
 ```
 
 ```python
@@ -23,7 +22,8 @@ record()
 Prompt template: [Deepseek prompt library](https://api-docs.deepseek.com/zh-cn/prompt-library)
 #### Spark
 ```bash
-pip install cffi gevent greenlet pycparser six websocket websocket-client pyaudio keyboard
+# pythom 3.8+
+pip install --upgrade spark_ai_python
 ```
 
 ```python
