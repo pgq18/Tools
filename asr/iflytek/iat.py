@@ -232,9 +232,9 @@ with open('./config.json', 'r') as conf_file:
     config = json.load(conf_file)
     config  = config['iflytek']
 
-wsParam = Ws_Param(APPID=config['appid'],
-                    APISecret=config['api_secret'],
-                    APIKey=config['api_key'])
+wsParam = Ws_Param(APPID=config['asr']['appid'],
+                    APISecret=config['asr']['api_secret'],
+                    APIKey=config['asr']['api_key'])
 websocket.enableTrace(False)
 wsUrl = wsParam.create_url()
 ws = websocket.WebSocketApp(wsUrl, on_message=on_message, on_error=on_error, on_close=on_close)
