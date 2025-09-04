@@ -9,7 +9,7 @@ Fill `config.json` with your own config before using.
 ### ASR
 #### iFLYTEK
 ```bash
-pip install cffi gevent greenlet pycparser six websocket websocket-client pyaudio keyboard
+pip install cffi gevent greenlet pycparser six websocket websocket-client==0.57.0 pyaudio keyboard
 ```
 
 ```python
