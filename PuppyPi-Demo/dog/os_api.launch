@@ -1,0 +1,36 @@
+<launch>
+    <include file="$(find lab_config)/launch/lab_config_manager.launch" />
+    
+    <!-- 启动 puppy_control 节点 -->
+    <!-- <node name="puppy_control" pkg="puppy_control" type="puppy.py" required="false" output="screen" /> -->
+
+    <!-- 启动 USB 摄像头节点 -->
+    <!-- <arg name="camera_name" default="usb_cam" />
+    <node name="$(arg camera_name)" pkg="usb_cam" type="usb_cam_node" respawn="true" respawn_delay="2" output="screen">
+        <param name="video_device" value="/dev/video0" />
+        <param name="image_width" value="640" />
+        <param name="image_height" value="480" />
+        <param name="pixel_format" value="yuyv" />
+        <param name="camera_frame_id" value="$(arg camera_name)" />
+        <param name="io_method" value="mmap"/>
+    </node> -->
+
+    <include file="$(find large_models)/launch/start_lite.launch" />
+
+    <!-- Launch the visual patrol node -->
+    <!-- <pause duration="10.0"/> -->
+    <!-- <node pkg="large_models" type="visual_patrol_demo.py" name="visual_patrol_demo" output="screen"/> -->
+
+    <!-- Launch the kick_ball node -->
+    <pause duration="5.0"/>
+    <node pkg="large_models" type="demo.py" name="demo" output="screen"/>
+
+    <!-- Launch the function_call node -->
+    <node pkg="large_models" type="os_api_call.py" name="os_api_call" output="screen" />
+
+    <!-- Launch the function_call node -->
+    <!-- <node pkg="large_models" type="function_call.py" name="function_call" output="screen" /> -->
+    <pause duration="5.0"/>
+    <node name='agent_input_flask_new' type='agent_input_flask_new.py' pkg='large_models' output='screen' />
+
+</launch>

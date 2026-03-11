@@ -1,35 +1,43 @@
 # Tools
-## Install
+
+机器人与AI工具集合，包含多个机器人平台的工具和LLM相关功能。
+
+## 目录结构
+
+```
+Tools/
+├── LLM-Tools/        # AI语音与大模型工具
+├── Go2-Tools/        # Unitree Go2 机器狗工具
+├── PuppyPi-Demo/     # PuppyPi 机器狗演示
+├── TonyPi-Demo/      # TonyPi 机器人演示
+└── Wheeltec-Tools/   # Wheeltec 移动机器人工具
+```
+
+## 模块说明
+
+### LLM-Tools
+- **ASR**: 讯飞语音识别 (iFLYTEK)
+- **LLM**: 讯飞星火大模型 (Spark)
+
+### Go2-Tools
+- 前置摄像头图像采集与WebSocket视频流传输
+- ROS TF位姿发送功能
+
+### PuppyPi-Demo
+- Flask API 客户端测试
+- 导航与动作控制接口
+
+### TonyPi-Demo
+- 踢球演示功能
+- 测试客户端
+
+### Wheeltec-Tools
+- 基于 ROS TF 的位姿发送工具
+
+## 安装
+
 ```bash
 git clone https://github.com/pgq18/Tools.git
 ```
-Fill `config.json` with your own config before using.
 
-## Usage
-### ASR
-#### iFLYTEK
-```bash
-pip install cffi gevent greenlet pycparser six websocket websocket-client==0.57.0 pyaudio keyboard
-```
-
-```python
-from asr.iflytek.iat import record
-# Start recording, and it will stop automatically after you stop talking
-record()
-```
-
-### LLM
-Prompt template: [Deepseek prompt library](https://api-docs.deepseek.com/zh-cn/prompt-library)
-#### Spark
-```bash
-# pythom 3.8+
-pip install --upgrade spark_ai_python
-```
-
-```python
-from models.spark.model import spark_default
-# Using default prompt
-spark_default("你好")
-# Using custom prompt
-spark_default(input="你好", prompt="请你扮演一个刚从美国留学回国的人，说话时候会故意中文夹杂部分英文单词，显得非常fancy，对话中总是带有很强的优越感。")
-```
+详细使用方法请参考各子目录的 README 文件。
