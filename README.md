@@ -1,43 +1,43 @@
 # Tools
 
-机器人与AI工具集合，包含多个机器人平台的工具和LLM相关功能。
+A collection of robotics and AI tools, including tools for multiple robot platforms and LLM-related functionalities.
 
-## 目录结构
+## Directory Structure
 
 ```
 Tools/
-├── LLM-Tools/        # AI语音与大模型工具
-├── Go2-Tools/        # Unitree Go2 机器狗工具
-├── PuppyPi-Demo/     # PuppyPi 机器狗演示
-├── TonyPi-Demo/      # TonyPi 机器人演示
-└── Wheeltec-Tools/   # Wheeltec 移动机器人工具
+├── LLM-Tools/        # AI voice and LLM tools
+├── Go2-Tools/        # Unitree Go2 robot dog tools
+├── PuppyPi-Demo/     # PuppyPi robot dog demo
+├── TonyPi-Demo/      # TonyPi robot demo
+└── Wheeltec-Tools/   # Wheeltec mobile robot tools
 ```
 
-## 模块说明
+## Module Description
 
 ### LLM-Tools
-- **ASR**: 讯飞语音识别 (iFLYTEK)
-- **LLM**: 讯飞星火大模型 (Spark)
+- **ASR**: iFLYTEK Speech Recognition
+- **LLM**: iFLYTEK Spark Large Language Model
 
 ### Go2-Tools
-- 前置摄像头图像采集与WebSocket视频流传输
-- ROS TF位姿发送功能
+- Front camera image capture and WebSocket video streaming
+- ROS TF pose publishing
 
 ### PuppyPi-Demo
-- Flask API 客户端测试
-- 导航与动作控制接口
+- Flask API client testing
+- Navigation and action control interfaces
 
 ### TonyPi-Demo
-- 踢球演示功能
-- 测试客户端
+- Ball kicking demo
+- Test client
 
 ### Wheeltec-Tools
-- 基于 ROS TF 的位姿发送工具
+- ROS TF-based pose publishing tools
 
-## 安装
+## Installation
 
 ```bash
 git clone https://github.com/pgq18/Tools.git
 ```
 
-详细使用方法请参考各子目录的 README 文件。
+For detailed usage, please refer to the README files in each subdirectory.
