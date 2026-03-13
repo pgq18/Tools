@@ -11,7 +11,7 @@ Tools/
 ├── PuppyPi-Demo/     # PuppyPi robot dog demo
 ├── TonyPi-Demo/      # TonyPi robot demo
 ├── Wheeltec-Tools/   # Wheeltec mobile robot tools
-└── SO101-Tools/      # SO101 robot arm tools
+└── Robot-Arm-Tools/  # Robot arm control tools
 ```
 
 ## Module Description
@@ -35,8 +35,8 @@ Tools/
 ### Wheeltec-Tools
 - ROS TF-based pose publishing tools
 
-### SO101-Tools
-- LeRobot-based SO101 robot arm control
+### Robot-Arm-Tools
+- LeRobot-based robot arm control (SO100, SO101, Koch, etc.)
 - WebSocket client for remote policy server (OpenPI)
 - Keyboard control and video recording support
 - Rerun visualization integration

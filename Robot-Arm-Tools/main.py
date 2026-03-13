@@ -41,7 +41,7 @@ import sys
 
 RUNNING = False
 
-idle_action = {
+so101_idle_action = {
     'shoulder_pan.pos': 4.13739266,
     'shoulder_lift.pos': -9.21443737,
     'elbow_flex.pos': -1.42267095,
@@ -164,7 +164,7 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
             busy_wait(1 / fps - dt_s)
             print("Action: ", action)
         else:
-            robot.send_action(idle_action)
+            robot.send_action(so101_idle_action)
             dt_s = time.perf_counter() - loop_start
             busy_wait(1 / fps - dt_s)
             # print("等待启动中... 当前状态:", element["state"])
