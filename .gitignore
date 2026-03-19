@@ -175,3 +175,6 @@ cython_debug/
 
 .DS_Store
 .vscode
+
+# Robot-Arm-Tools specific
+recorded_videos/
