@@ -1,50 +1,32 @@
 # Tools
+## Install
+Fill `config.json` with your own config before using.
 
-A collection of robotics and AI tools, including tools for multiple robot platforms and LLM-related functionalities.
-
-## Directory Structure
-
-```
-Tools/
-├── LLM-Tools/        # AI voice and LLM tools
-├── Go2-Tools/        # Unitree Go2 robot dog tools
-├── PuppyPi-Demo/     # PuppyPi robot dog demo
-├── TonyPi-Demo/      # TonyPi robot demo
-├── Wheeltec-Tools/   # Wheeltec mobile robot tools
-└── Robot-Arm-Tools/  # Robot arm control tools
-```
-
-## Module Description
-
-### LLM-Tools
-- **ASR**: iFLYTEK Speech Recognition
-- **LLM**: iFLYTEK Spark Large Language Model
-
-### Go2-Tools
-- Front camera image capture and WebSocket video streaming
-- ROS TF pose publishing
-
-### PuppyPi-Demo
-- Flask API client testing
-- Navigation and action control interfaces
-
-### TonyPi-Demo
-- Ball kicking demo
-- Test client
-
-### Wheeltec-Tools
-- ROS TF-based pose publishing tools
-
-### Robot-Arm-Tools
-- LeRobot-based robot arm control (SO100, SO101, Koch, etc.)
-- WebSocket client for remote policy server (OpenPI)
-- Keyboard control and video recording support
-- Rerun visualization integration
-
-## Installation
-
+## Usage
+### ASR
+#### iFLYTEK
 ```bash
-git clone https://github.com/pgq18/Tools.git
+pip install cffi gevent greenlet pycparser six websocket websocket-client==0.57.0 pyaudio keyboard
 ```
 
-For detailed usage, please refer to the README files in each subdirectory.
+```python
+from asr.iflytek.iat import record
+# Start recording, and it will stop automatically after you stop talking
+record()
+```
+
+### LLM
+Prompt template: [Deepseek prompt library](https://api-docs.deepseek.com/zh-cn/prompt-library)
+#### Spark
+```bash
+# pythom 3.8+
+pip install --upgrade spark_ai_python
+```
+
+```python
+from models.spark.model import spark_default
+# Using default prompt
+spark_default("你好")
+# Using custom prompt
+spark_default(input="你好", prompt="请你扮演一个刚从美国留学回国的人，说话时候会故意中文夹杂部分英文单词，显得非常fancy，对话中总是带有很强的优越感。")
+```
