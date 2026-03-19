@@ -8,5 +8,5 @@ lerobot-teleoperate \
     --teleop.port=/dev/ttyACM1 \
     --teleop.id=my_awesome_leader_arm \
     --fps=60 \
-    --robot.cameras="{wrist: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}, up: {type: opencv, index_or_path: 2, width: 640, height: 480, fps: 30}}" \
+    --robot.cameras="{wrist: {type: opencv, index_or_path: 18, width: 640, height: 480, fps: 30}, up: {type: intelrealsense, serial_number_or_name: 045322072659, width: 640, height: 480, fps: 30}}" \
     --display_data=true 
