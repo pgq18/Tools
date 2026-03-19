@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 python main.py \
     --robot.type=so101_follower \
@@ -8,4 +8,5 @@ python main.py \
     --display_data=true \
     --server_host="192.168.60.202" \
     --task_description="Put green cube in the right bowl and red cube in the left bowl." \
-    --record_video true
+    --record_video true \
+    --robot_type=so101

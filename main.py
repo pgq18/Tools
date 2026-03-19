@@ -50,6 +50,36 @@ so101_idle_action = {
     'gripper.pos': 18.26452064
     }
 
+# 双臂 idle_action (需要根据实际机械臂调整数值)
+bi_alicia_d_idle_action = {
+    'left_joint1.pos': 0.0, 'left_joint2.pos': 0.0, 'left_joint3.pos': 0.0,
+    'left_joint4.pos': 0.0, 'left_joint5.pos': 0.0, 'left_joint6.pos': 0.0,
+    'left_gripper.pos': 500.0,
+    'right_joint1.pos': 0.0, 'right_joint2.pos': 0.0, 'right_joint3.pos': 0.0,
+    'right_joint4.pos': 0.0, 'right_joint5.pos': 0.0, 'right_joint6.pos': 0.0,
+    'right_gripper.pos': 500.0,
+}
+
+# 机器人配置映射
+ROBOT_CONFIGS = {
+    "so101": {
+        "state_keys": ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos",
+                       "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"],
+        "camera_mapping": {"front_view": "up", "left_wrist_view": "wrist"},
+        "idle_action": so101_idle_action,
+        "state_dim": 6,
+    },
+    "bi_alicia_d": {
+        "state_keys": ["left_joint1.pos", "left_joint2.pos", "left_joint3.pos",
+                       "left_joint4.pos", "left_joint5.pos", "left_joint6.pos", "left_gripper.pos",
+                       "right_joint1.pos", "right_joint2.pos", "right_joint3.pos",
+                       "right_joint4.pos", "right_joint5.pos", "right_joint6.pos", "right_gripper.pos"],
+        "camera_mapping": {"front_view": "up", "left_wrist_view": "wrist1", "right_wrist_view": "wrist2"},
+        "idle_action": bi_alicia_d_idle_action,
+        "state_dim": 14,
+    }
+}
+
 def keyboard_listener():
     """监听键盘输入，在单独的线程中运行"""
     global RUNNING
@@ -92,10 +122,19 @@ class ControlConfig:
     record_video: bool = False
     # Video output directory
     video_output_dir: str = "./recorded_videos"
+    # Robot type: "so101" or "bi_alicia_d"
+    robot_type: str = "so101"
 
 def control_loop(robot: Robot, client, fps: int, display_data: bool = False, task_description: str | None = None,
                  record_video: bool = False, video_output_dir: str = "./recorded_videos",
-                 video_writer_ref = None):
+                 video_writer_ref = None, robot_type: str = "so101"):
+    # 获取机器人配置
+    robot_config = ROBOT_CONFIGS[robot_type]
+    state_keys = robot_config["state_keys"]
+    camera_mapping = robot_config["camera_mapping"]
+    idle_action = robot_config["idle_action"]
+    state_dim = robot_config["state_dim"]
+
     # 启动键盘监听线程
     keyboard_thread = threading.Thread(target=keyboard_listener, daemon=True)
     keyboard_thread.start()
@@ -115,15 +154,20 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
     while True:
         loop_start = time.perf_counter()
         observation = robot.get_observation()
-        ob_action = {list(observation.keys())[i]: list(observation.values())[i] for i in range(6)}
+
+        # 动态构建状态
+        state = np.array([observation[key] for key in state_keys])
+
+        # 动态构建 element
         element = {
-            "front_view": observation["up"],
-            "left_wrist_view": observation["wrist"],
-            "state": np.array(list(observation.values())[0:6]),
+            **{view_name: observation[obs_key] for view_name, obs_key in camera_mapping.items()},
+            "state": state,
             "prompt": str(task_description),
             "dataset_names": ["penggq/task_0"],
         }
+
         if display_data:
+            ob_action = {key: observation[key] for key in state_keys}
             log_rerun_data(observation, ob_action)
 
         # 视频录制逻辑
@@ -156,15 +200,21 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
                 action_plan.extend(action_chunk)
             action = action_plan.popleft()
             print("Action chunk: ", action)
-            action = {list(observation.keys())[i]: action[i] for i in range(6)}
-            action["gripper.pos"] = 0.0 if action["gripper.pos"] < 8.0 else action["gripper.pos"]
-            action["gripper.pos"] = action["gripper.pos"] + 3.0
-            robot.send_action(action)
+
+            # 动态构建动作字典
+            action_dict = {state_keys[i]: action[i] for i in range(state_dim)}
+
+            # SO101 特殊处理: gripper 阈值
+            if robot_type == "so101":
+                action_dict["gripper.pos"] = 0.0 if action_dict["gripper.pos"] < 8.0 else action_dict["gripper.pos"]
+                action_dict["gripper.pos"] = action_dict["gripper.pos"] + 3.0
+
+            robot.send_action(action_dict)
             dt_s = time.perf_counter() - loop_start
             busy_wait(1 / fps - dt_s)
-            print("Action: ", action)
+            print("Action: ", action_dict)
         else:
-            robot.send_action(so101_idle_action)
+            robot.send_action(idle_action)
             dt_s = time.perf_counter() - loop_start
             busy_wait(1 / fps - dt_s)
             # print("等待启动中... 当前状态:", element["state"])
@@ -185,7 +235,7 @@ def control_robot(cfg: ControlConfig):
 
     try:
         control_loop(robot, client, cfg.fps, cfg.display_data, cfg.task_description,
-                     cfg.record_video, cfg.video_output_dir, video_writer_ref)
+                     cfg.record_video, cfg.video_output_dir, video_writer_ref, cfg.robot_type)
     except KeyboardInterrupt:
         pass
     finally:

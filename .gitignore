@@ -178,3 +178,5 @@ cython_debug/
 
 # Robot-Arm-Tools specific
 recorded_videos/
+
+intervention_logs/
