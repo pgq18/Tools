@@ -1,20 +1,31 @@
 # Tools
 
-A collection of robotics and AI tools, including tools for multiple robot platforms and LLM-related functionalities.
+This repository contains multiple robotics and AI tools, each with its own branch.
 
-## Directory Structure
+## Branch List
 
+| Branch | Description |
+|--------|-------------|
+| [feature/llm-tools](https://github.com/pgq18/Tools/tree/feature/llm-tools) | AI voice recognition and iFLYTEK Spark LLM integration |
+| [feature/go2-tools](https://github.com/pgq18/Tools/tree/feature/go2-tools) | Unitree Go2 robot dog camera and client tools |
+| [feature/puppypi-demo](https://github.com/pgq18/Tools/tree/feature/puppypi-demo) | PuppyPi robot dog navigation and action control demo |
+| [feature/tonypi-demo](https://github.com/pgq18/Tools/tree/feature/tonypi-demo) | TonyPi robot kick ball demo |
+| [feature/wheeltec-tools](https://github.com/pgq18/Tools/tree/feature/wheeltec-tools) | Wheeltec mobile robot ROS TF pose publishing |
+| [feature/robot-arm-tools](https://github.com/pgq18/Tools/tree/feature/robot-arm-tools) | LeRobot-based robot arm control tools |
+
+## Usage
+
+Checkout a specific tool branch:
+
+```bash
+# Clone a single tool
+git clone -b feature/llm-tools https://github.com/pgq18/Tools.git
+
+# Or switch in an existing repository
+git checkout feature/llm-tools
 ```
-Tools/
-├── LLM-Tools/        # AI voice and LLM tools
-├── Go2-Tools/        # Unitree Go2 robot dog tools
-├── PuppyPi-Demo/     # PuppyPi robot dog demo
-├── TonyPi-Demo/      # TonyPi robot demo
-├── Wheeltec-Tools/   # Wheeltec mobile robot tools
-└── Robot-Arm-Tools/  # Robot arm control tools
-```
 
-## Module Description
+## Tool Overview
 
 ### LLM-Tools
 - **ASR**: iFLYTEK Speech Recognition
@@ -40,11 +51,3 @@ Tools/
 - WebSocket client for remote policy server (OpenPI)
 - Keyboard control and video recording support
 - Rerun visualization integration
-
-## Installation
-
-```bash
-git clone https://github.com/pgq18/Tools.git
-```
-
-For detailed usage, please refer to the README files in each subdirectory.
