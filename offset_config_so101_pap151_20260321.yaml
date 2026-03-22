@@ -1,0 +1,5 @@
+data_offset: 0.0
+dataset: so101_pap151_20260321
+video_offsets:
+  observation.images.up: -0.07
+  observation.images.wrist: -0.07
