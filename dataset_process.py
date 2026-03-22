@@ -837,6 +837,8 @@ def apply_time_offsets(
     # 3. 处理 data 目录 - 裁剪并重索引
     total_frames_removed = 0
     episode_length_changes = {}
+    episode_new_ranges = {}  # 记录每个 episode 新的全局索引范围
+    global_index = 0  # 追踪全局索引
 
     for data_file in sorted((dataset.root / "data").rglob("*.parquet")):
         relative_path = data_file.relative_to(dataset.root / "data")
@@ -845,11 +847,14 @@ def apply_time_offsets(
 
         df = pq.read_table(data_file).to_pandas()
 
-        # 按 episode 分组处理
+        # 按 episode 分组处理（按 episode_index 排序）
         new_dfs = []
-        for ep_idx in df["episode_index"].unique():
+        for ep_idx in sorted(df["episode_index"].unique()):
             ep_df = df[df["episode_index"] == ep_idx].copy()
             original_length = len(ep_df)
+
+            # 记录新的起始索引
+            new_start_idx = global_index
 
             # 裁剪开头和结尾
             if trim_start_frames > 0 or trim_end_frames > 0:
@@ -861,36 +866,52 @@ def apply_time_offsets(
                     continue
                 ep_df = ep_df.iloc[start:end].copy()
 
-            # 重置帧索引
-            ep_df["frame_index"] = range(len(ep_df))
+            new_length = len(ep_df)
+
+            # 重置帧索引和全局索引
+            ep_df["frame_index"] = range(new_length)
             ep_df["timestamp"] = ep_df["frame_index"] / fps
+            ep_df["index"] = range(global_index, global_index + new_length)
 
             new_dfs.append(ep_df)
 
-            length_change = original_length - len(ep_df)
+            # 记录新的范围
+            episode_new_ranges[ep_idx] = {
+                "from_index": new_start_idx,
+                "to_index": global_index + new_length,
+                "new_length": new_length
+            }
+
+            global_index += new_length
+
+            length_change = original_length - new_length
             if length_change > 0:
                 episode_length_changes[ep_idx] = length_change
                 total_frames_removed += length_change
 
         if new_dfs:
-            new_df = pd.concat(new_dfs, ignore_index=True)
-            # 重新计算全局索引
-            new_df["index"] = range(len(new_df))
-            pq.write_table(pa.Table.from_pandas(new_df), output_file)
+            new_df = pd.concat(new_dfs, ignore_index=False)
+            # 删除 pandas 索引列，避免 lerobot 加载时报错
+            new_df = new_df.reset_index(drop=True)
+            table = pa.Table.from_pandas(new_df, preserve_index=False)
+            pq.write_table(table, output_file)
         else:
             # 创建空文件
-            empty_df = df.iloc[0:0]
-            pq.write_table(pa.Table.from_pandas(empty_df), output_file)
+            empty_df = df.iloc[0:0].reset_index(drop=True)
+            table = pa.Table.from_pandas(empty_df, preserve_index=False)
+            pq.write_table(table, output_file)
 
     # 4. 更新 episodes 元数据
     for ep_file in sorted((output_dir / "meta" / "episodes").rglob("*.parquet")):
         df = pq.read_table(ep_file).to_pandas()
 
-        # 更新长度
+        # 更新长度和索引范围
         for ep_idx in df["episode_index"].unique():
-            if ep_idx in episode_length_changes:
-                orig_length = df.loc[df["episode_index"] == ep_idx, "length"].values[0]
-                df.loc[df["episode_index"] == ep_idx, "length"] = orig_length - episode_length_changes[ep_idx]
+            if ep_idx in episode_new_ranges:
+                new_range = episode_new_ranges[ep_idx]
+                df.loc[df["episode_index"] == ep_idx, "length"] = new_range["new_length"]
+                df.loc[df["episode_index"] == ep_idx, "dataset_from_index"] = new_range["from_index"]
+                df.loc[df["episode_index"] == ep_idx, "dataset_to_index"] = new_range["to_index"]
 
         # 更新视频时间戳
         for video_key, offset in video_offsets.items():
@@ -902,7 +923,10 @@ def apply_time_offsets(
                 df[from_col] = (df[from_col] - offset).clip(lower=0)
                 df[to_col] = (df[to_col] - offset).clip(lower=0)
 
-        pq.write_table(pa.Table.from_pandas(df), ep_file)
+        # 保存时不保留 pandas 索引
+        df = df.reset_index(drop=True)
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        pq.write_table(table, ep_file)
 
     # 5. 更新 info.json 中的总帧数
     import json

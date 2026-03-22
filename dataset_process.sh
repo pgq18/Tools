@@ -14,12 +14,6 @@
 #     --save ./tmp/ep40.png \
 #     --save-video
 
-python dataset_process.py \
-    --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321_offset \
-    --measure-offset \
-    --episode 0 \
-    --tolerance 0.1
-
 # python dataset_process.py \
 #     --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321 \
 #     --generate-comparison \
@@ -28,8 +22,15 @@ python dataset_process.py \
 #     --offsets -0.2 \
 #     --output ./comparison.png
 
+python dataset_process.py \
+    --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321_offset \
+    --measure-offset \
+    --episode 151 \
+    --tolerance 0.04
+
 # python dataset_process.py \
 #     --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321 \
 #     --apply-offset \
 #     --offset-config offset_config_so101_pap151_20260321.yaml \
-#     --output /home/pengguanqi/Datasets/so101_pap151_20260321_offset
+#     --output /home/pengguanqi/Datasets/so101_pap151_20260321_offset \
+#     --tolerance 0.04
