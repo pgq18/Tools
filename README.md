@@ -47,7 +47,7 @@ git checkout feature/llm-tools
 - ROS TF-based pose publishing tools
 
 ### Robot-Arm-Tools
-- LeRobot-based robot arm control (SO100, SO101, Koch, etc.)
-- WebSocket client for remote policy server (OpenPI)
-- Keyboard control and video recording support
-- Rerun visualization integration
+- **SO101**: WebSocket server, teleoperation, dataset recording, VLA inference client
+- **Alicia D (Bimanual)**: VLA inference client, dataset recording, idle action detection
+- **HIL Testing**: Human-in-the-Loop intervention logging and testing
+- **Dataset Processing**: Episode management, visualization, time offset calibration
