@@ -1,6 +1,6 @@
 #!/bin/bash
 
-python hil_test.py \
+python src/hil_test.py \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM0 \
     --robot.id=my_awesome_follower_arm \

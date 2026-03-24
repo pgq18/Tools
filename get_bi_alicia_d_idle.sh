@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python get_idle_action.py
+python src/get_idle_action.py

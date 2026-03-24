@@ -16,7 +16,7 @@ export CAMERA_WRIST_INDEX=${CAMERA_WRIST_INDEX:-1}
 # Robot ID
 export ROBOT_ID=${ROBOT_ID:-so101_follower_arm}
 
-python Tools/so101_robot_server.py \
+python src/so101_robot_server.py \
     --robot.type=so101_follower \
     --robot.port=$SERIAL_PORT \
     --robot.id=$ROBOT_ID \

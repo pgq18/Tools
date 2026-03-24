@@ -1,6 +1,6 @@
 #!/bin/bash
 
-python main.py \
+python src/main.py \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM0 \
     --robot.id=my_awesome_follower_arm \

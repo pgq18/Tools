@@ -11,6 +11,7 @@ from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraCon
 from lerobot.robots import (  # noqa: F401
     Robot,
     RobotConfig,
+    bi_alicia_d_follower,
     bi_so100_follower,
     hope_jr,
     koch_follower,
@@ -30,8 +31,8 @@ from lerobot.teleoperators import (  # noqa: F401
     so101_leader,
 )
 from lerobot.utils.utils import init_logging, move_cursor_up
-from lerobot.utils.visualization_utils import _init_rerun, log_rerun_data
-from lerobot.utils.robot_utils import busy_wait
+from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
+from lerobot.utils.robot_utils import precise_sleep
 
 from openpi_client import websocket_client_policy as _websocket_client_policy
 import numpy as np
@@ -211,12 +212,12 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
 
             robot.send_action(action_dict)
             dt_s = time.perf_counter() - loop_start
-            busy_wait(1 / fps - dt_s)
+            precise_sleep(1 / fps - dt_s)
             print("Action: ", action_dict)
         else:
             robot.send_action(idle_action)
             dt_s = time.perf_counter() - loop_start
-            busy_wait(1 / fps - dt_s)
+            precise_sleep(1 / fps - dt_s)
             # print("等待启动中... 当前状态:", element["state"])
         # time.sleep(0.01)  # 避免过度占用CPU
 
@@ -225,7 +226,7 @@ def control_robot(cfg: ControlConfig):
     init_logging()
     logging.info(pformat(asdict(cfg)))
     if cfg.display_data:
-        _init_rerun(session_name="control_robot")
+        init_rerun(session_name="control_robot")
     client = _websocket_client_policy.WebsocketClientPolicy(cfg.server_host, cfg.server_port)
     robot = make_robot_from_config(cfg.robot)
     robot.connect()
