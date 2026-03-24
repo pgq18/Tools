@@ -1,3 +1,5 @@
+import os, sys
+sys.path.insert(0, "/home/mc509/Workspace/VLA/Aloha/Tools")
 import logging
 import time
 import draccus
@@ -38,7 +40,6 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 import numpy as np
 import collections
 import threading
-import sys
 
 RUNNING = False
 
@@ -53,12 +54,20 @@ so101_idle_action = {
 
 # 双臂 idle_action (需要根据实际机械臂调整数值)
 bi_alicia_d_idle_action = {
-    'left_joint1.pos': 0.0, 'left_joint2.pos': 0.0, 'left_joint3.pos': 0.0,
-    'left_joint4.pos': 0.0, 'left_joint5.pos': 0.0, 'left_joint6.pos': 0.0,
-    'left_gripper.pos': 500.0,
-    'right_joint1.pos': 0.0, 'right_joint2.pos': 0.0, 'right_joint3.pos': 0.0,
-    'right_joint4.pos': 0.0, 'right_joint5.pos': 0.0, 'right_joint6.pos': 0.0,
-    'right_gripper.pos': 500.0,
+    'left_joint1.pos': 0.17578125,
+    'left_joint2.pos': -0.87890625,
+    'left_joint3.pos': -0.52734375,
+    'left_joint4.pos': -0.26367188,
+    'left_joint5.pos': -0.87890625,
+    'left_joint6.pos': -0.17578125,
+    'left_gripper.pos': 502.00000000,
+    'right_joint1.pos': -0.35156250,
+    'right_joint2.pos': -0.70312500,
+    'right_joint3.pos': -0.26367188,
+    'right_joint4.pos': -0.08789063,
+    'right_joint5.pos': -0.61523437,
+    'right_joint6.pos': 0.08789063,
+    'right_gripper.pos': 502.00000000,
 }
 
 # 机器人配置映射
@@ -75,7 +84,7 @@ ROBOT_CONFIGS = {
                        "left_joint4.pos", "left_joint5.pos", "left_joint6.pos", "left_gripper.pos",
                        "right_joint1.pos", "right_joint2.pos", "right_joint3.pos",
                        "right_joint4.pos", "right_joint5.pos", "right_joint6.pos", "right_gripper.pos"],
-        "camera_mapping": {"front_view": "up", "left_wrist_view": "wrist1", "right_wrist_view": "wrist2"},
+        "camera_mapping": {"face_view": "up", "left_wrist_view": "wrist1", "right_wrist_view": "wrist2"},
         "idle_action": bi_alicia_d_idle_action,
         "state_dim": 14,
     }
@@ -125,10 +134,16 @@ class ControlConfig:
     video_output_dir: str = "./recorded_videos"
     # Robot type: "so101" or "bi_alicia_d"
     robot_type: str = "so101"
+    # Dataset names for model inference
+    dataset_names: list[str] = None
+
+    def __post_init__(self):
+        if self.dataset_names is None:
+            self.dataset_names = ["penggq/task_0"]
 
 def control_loop(robot: Robot, client, fps: int, display_data: bool = False, task_description: str | None = None,
                  record_video: bool = False, video_output_dir: str = "./recorded_videos",
-                 video_writer_ref = None, robot_type: str = "so101"):
+                 video_writer_ref = None, robot_type: str = "so101", dataset_names: list[str] = None):
     # 获取机器人配置
     robot_config = ROBOT_CONFIGS[robot_type]
     state_keys = robot_config["state_keys"]
@@ -164,7 +179,7 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
             **{view_name: observation[obs_key] for view_name, obs_key in camera_mapping.items()},
             "state": state,
             "prompt": str(task_description),
-            "dataset_names": ["penggq/task_0"],
+            "dataset_names": dataset_names,
         }
 
         if display_data:
@@ -236,7 +251,8 @@ def control_robot(cfg: ControlConfig):
 
     try:
         control_loop(robot, client, cfg.fps, cfg.display_data, cfg.task_description,
-                     cfg.record_video, cfg.video_output_dir, video_writer_ref, cfg.robot_type)
+                     cfg.record_video, cfg.video_output_dir, video_writer_ref, cfg.robot_type,
+                     cfg.dataset_names)
     except KeyboardInterrupt:
         pass
     finally:

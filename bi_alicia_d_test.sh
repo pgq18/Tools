@@ -10,4 +10,5 @@ python src/main.py \
     --server_host="192.168.60.202" \
     --task_description="Grab the stuff into the bowl" \
     --record_video true \
-    --robot_type=bi_alicia_d
+    --robot_type=bi_alicia_d \
+    --dataset_names '["lerobot/aloha_mobile_cabinet_czj"]'
