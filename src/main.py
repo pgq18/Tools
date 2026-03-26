@@ -53,21 +53,41 @@ so101_idle_action = {
     }
 
 # 双臂 idle_action (需要根据实际机械臂调整数值)
+
+# Original idle action of bi-arms
+# bi_alicia_d_idle_action = {
+#     'left_joint1.pos': 0.17578125,
+#     'left_joint2.pos': -0.87890625,
+#     'left_joint3.pos': -0.52734375,
+#     'left_joint4.pos': -0.26367188,
+#     'left_joint5.pos': -0.87890625,
+#     'left_joint6.pos': -0.17578125,
+#     'left_gripper.pos': 502.00000000,
+#     'right_joint1.pos': -0.35156250,
+#     'right_joint2.pos': -0.70312500,
+#     'right_joint3.pos': -0.26367188,
+#     'right_joint4.pos': -0.08789063,
+#     'right_joint5.pos': -0.61523437,
+#     'right_joint6.pos': 0.08789063,
+#     'right_gripper.pos': 502.00000000,
+# }
+
+# Update Now!
 bi_alicia_d_idle_action = {
-    'left_joint1.pos': 0.17578125,
-    'left_joint2.pos': -0.87890625,
-    'left_joint3.pos': -0.52734375,
-    'left_joint4.pos': -0.26367188,
-    'left_joint5.pos': -0.87890625,
-    'left_joint6.pos': -0.17578125,
-    'left_gripper.pos': 502.00000000,
-    'right_joint1.pos': -0.35156250,
-    'right_joint2.pos': -0.70312500,
-    'right_joint3.pos': -0.26367188,
-    'right_joint4.pos': -0.08789063,
-    'right_joint5.pos': -0.61523437,
-    'right_joint6.pos': 0.08789063,
-    'right_gripper.pos': 502.00000000,
+    'left_joint1.pos': 3.25195313,
+    'left_joint2.pos': 106.17187500,
+    'left_joint3.pos': -26.45507813,
+    'left_joint4.pos': 3.77929687,
+    'left_joint5.pos': -50.09765625,
+    'left_joint6.pos': -1.93359375,
+    'left_gripper.pos': 723.00000000,
+    'right_joint1.pos': 2.46093750,
+    'right_joint2.pos': 105.90820312,
+    'right_joint3.pos': -4.74609375,
+    'right_joint4.pos': -0.35156250,
+    'right_joint5.pos': -88.33007812,
+    'right_joint6.pos': 1.14257812,
+    'right_gripper.pos': 724.00000000,
 }
 
 # 机器人配置映射

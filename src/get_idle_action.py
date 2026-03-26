@@ -15,8 +15,8 @@ def main():
     # 配置机械臂 (参考 record_dual_arms.sh 的配置)
     config = BiAliciaDFollowerConfig(
         id="bimanual_follower",
-        left_arm_port="/dev/ttyACM1",
-        right_arm_port="/dev/ttyACM0",
+        left_arm_port="/dev/ttyACM0",
+        right_arm_port="/dev/ttyACM1",
         cameras={},  # 不需要相机
     )
 
