@@ -34,7 +34,7 @@ import sys
 import os
 
 # Add openpi_client to path
-_openpi_client_path = os.path.join(os.path.dirname(__file__), 'openpi_client')
+_openpi_client_path = os.path.join(os.path.dirname(__file__), '..')
 if os.path.exists(_openpi_client_path):
     sys.path.insert(0, _openpi_client_path)
 else:
@@ -43,14 +43,25 @@ else:
 
 from openpi_client import msgpack_numpy
 
+# Lazy imports for real robot mode
+# These are imported only when needed to avoid dependency issues in mock mode
+
 # SO101 idle action (home position)
+# SO101_IDLE_ACTION = {
+#     "shoulder_pan.pos": 4.13739266,
+#     "shoulder_lift.pos": -9.21443737,
+#     "elbow_flex.pos": -1.42267095,
+#     "wrist_flex.pos": 78.72523686,
+#     "wrist_roll.pos": 2.53860246,
+#     "gripper.pos": 18.26452064,
+# }
 SO101_IDLE_ACTION = {
-    "shoulder_pan.pos": 4.13739266,
-    "shoulder_lift.pos": -9.21443737,
-    "elbow_flex.pos": -1.42267095,
-    "wrist_flex.pos": 78.72523686,
-    "wrist_roll.pos": 2.53860246,
-    "gripper.pos": 18.26452064,
+    "shoulder_pan.pos": 8.0,
+    "shoulder_lift.pos": -99.0,
+    "elbow_flex.pos": 95.0,
+    "wrist_flex.pos": 69.0,
+    "wrist_roll.pos": 2.0,
+    "gripper.pos": 2.0,
 }
 
 
@@ -151,6 +162,7 @@ class SO101RobotServer:
                 logger.info(f"[Mock] Received action: {action}")
             else:
                 loop = asyncio.get_event_loop()
+                print(action)
                 await loop.run_in_executor(None, self._robot.send_action, action)
             return {"success": True, "action_sent": action}
         except Exception as e:
@@ -233,23 +245,32 @@ def main():
         try:
             import draccus
             from lerobot.robots import RobotConfig, make_robot_from_config
+            # Import robot configs to register them with draccus ChoiceRegistry
+            from lerobot.robots.so101_follower import SO101FollowerConfig  # noqa: F401
+            # Import camera configs to register them with draccus ChoiceRegistry
+            from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
+            from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig  # noqa: F401
         except ImportError as e:
             logger.error(f"Real robot mode requires lerobot and draccus: {e}")
             logger.error("Use --mock for testing without hardware")
             return
 
-        # Use draccus for the robot config
-        @draccus.wrap()
-        def create_robot(robot_cfg: RobotConfig):
-            return robot_cfg
+        # Create a wrapper config class that includes robot field
+        # This allows --robot.type, --robot.port, etc. to work correctly
+        @dataclass
+        class RobotWrapperConfig:
+            robot: RobotConfig = None
 
-        # This is a simplified approach — in practice the full draccus config
-        # would come from CLI args. For mock mode this is skipped entirely.
+        # Parse robot config from remaining CLI args (--robot.type, --robot.port, etc.)
         logger.info("Creating robot...")
-        robot = make_robot_from_config(config.robot)
+        wrapper_cfg = draccus.parse(RobotWrapperConfig, args=remaining)
+        robot = make_robot_from_config(wrapper_cfg.robot)
         logger.info("Connecting to robot...")
         robot.connect()
         logger.info("Robot connected.")
+        logger.info("Initializing robot to idle position...")
+        robot.send_action(SO101_IDLE_ACTION)
+        logger.info("Robot initialized to idle position.")
 
     server = SO101RobotServer(robot, config)
 
