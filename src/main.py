@@ -37,6 +37,7 @@ from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 from lerobot.utils.robot_utils import precise_sleep
 
 from openpi_client import websocket_client_policy as _websocket_client_policy
+from openpi_client.action_chunk_broker import ActionChunkBroker
 import numpy as np
 import collections
 import threading
@@ -156,6 +157,14 @@ class ControlConfig:
     robot_type: str = "so101"
     # Dataset names for model inference
     dataset_names: list[str] = None
+    # Enable Real-Time Action Chunking (RTC) mode
+    use_rtc: bool = False
+    # RTC: step at which background inference starts
+    rtc_s: int = 16
+    # RTC: deterministic region length
+    rtc_d: int = 8
+    # RTC: action horizon for the broker
+    rtc_action_horizon: int = 32
 
     def __post_init__(self):
         if self.dataset_names is None:
@@ -163,7 +172,8 @@ class ControlConfig:
 
 def control_loop(robot: Robot, client, fps: int, display_data: bool = False, task_description: str | None = None,
                  record_video: bool = False, video_output_dir: str = "./recorded_videos",
-                 video_writer_ref = None, robot_type: str = "so101", dataset_names: list[str] = None):
+                 video_writer_ref = None, robot_type: str = "so101", dataset_names: list[str] = None,
+                 broker: ActionChunkBroker | None = None):
     # 获取机器人配置
     robot_config = ROBOT_CONFIGS[robot_type]
     state_keys = robot_config["state_keys"]
@@ -231,10 +241,17 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
                 video_writer.write(frame)
 
         if RUNNING:
-            if not action_plan:
-                action_chunk = client.infer(element)["action"][0]
-                action_plan.extend(action_chunk)
-            action = action_plan.popleft()
+            if broker is not None:
+                # RTC mode: broker handles action chunking with background inference
+                action = broker.infer(element)["action"]
+                if action.ndim > 1:
+                    action = action[0]
+            else:
+                # Standard mode: use deque for action chunking
+                if not action_plan:
+                    action_chunk = client.infer(element)["action"][0]
+                    action_plan.extend(action_chunk)
+                action = action_plan.popleft()
             print("Action chunk: ", action)
 
             # 动态构建动作字典
@@ -266,13 +283,25 @@ def control_robot(cfg: ControlConfig):
     robot = make_robot_from_config(cfg.robot)
     robot.connect()
 
+    # Create broker for RTC mode
+    broker = None
+    if cfg.use_rtc:
+        broker = ActionChunkBroker(
+            client,
+            action_horizon=cfg.rtc_action_horizon,
+            is_rtc=True,
+            s=cfg.rtc_s,
+            d=cfg.rtc_d,
+        )
+        print(f"RTC mode enabled: s={cfg.rtc_s}, d={cfg.rtc_d}, action_horizon={cfg.rtc_action_horizon}")
+
     # 用于在控制循环中传递和释放视频写入器
     video_writer_ref = [None]  # 使用列表以便在闭包中修改
 
     try:
         control_loop(robot, client, cfg.fps, cfg.display_data, cfg.task_description,
                      cfg.record_video, cfg.video_output_dir, video_writer_ref, cfg.robot_type,
-                     cfg.dataset_names)
+                     cfg.dataset_names, broker=broker)
     except KeyboardInterrupt:
         pass
     finally:
