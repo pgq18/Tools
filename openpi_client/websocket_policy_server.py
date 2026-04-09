@@ -57,11 +57,22 @@ class WebsocketPolicyServer:
         while True:
             try:
                 start_time = time.monotonic()
-                obs = msgpack_numpy.unpackb(await websocket.recv())
+                raw = msgpack_numpy.unpackb(await websocket.recv())
+
+                # Detect RTC protocol (backward-compatible)
+                if isinstance(raw, dict) and "is_rtc" in raw:
+                    obs = raw["obs"]
+                    prev_action = raw.get("prev_action")
+                    is_rtc = raw["is_rtc"]
+                else:
+                    obs = raw
+                    prev_action = None
+                    is_rtc = False
+
                 obs = self._data_processor.in_process(obs)
 
                 infer_time = time.monotonic()
-                action = self._policy.infer(obs)
+                action = self._policy.infer(obs, prev_action=prev_action, is_rtc=is_rtc)
                 infer_time = time.monotonic() - infer_time
 
                 action["server_timing"] = {

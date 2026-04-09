@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Dict, Optional, Tuple
 
+import numpy as np
 from typing_extensions import override
 import websockets.sync.client
 
@@ -44,8 +45,11 @@ class WebsocketClientPolicy(_base_policy.BasePolicy):
                 time.sleep(5)
 
     @override
-    def infer(self, obs: Dict) -> Dict:  # noqa: UP006
-        data = self._packer.pack(obs)
+    def infer(self, obs: Dict, prev_action: np.ndarray | None = None, is_rtc: bool = False) -> Dict:  # noqa: UP006
+        data_to_send: Dict = {"obs": obs, "is_rtc": is_rtc}
+        if prev_action is not None:
+            data_to_send["prev_action"] = prev_action
+        data = self._packer.pack(data_to_send)
         self._ws.send(data)
         response = self._ws.recv()
         if isinstance(response, str):
