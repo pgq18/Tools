@@ -1,5 +1,5 @@
 import os, sys
-sys.path.insert(0, "/home/mc509/Workspace/VLA/Aloha/Tools")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 import time
 import draccus
@@ -44,14 +44,23 @@ import threading
 
 RUNNING = False
 
+# so101_idle_action = {
+#     'shoulder_pan.pos': 4.13739266,
+#     'shoulder_lift.pos': -9.21443737,
+#     'elbow_flex.pos': -1.42267095,
+#     'wrist_flex.pos': 78.72523686,
+#     'wrist_roll.pos': 2.53860246,
+#     'gripper.pos': 18.26452064
+# }
+
 so101_idle_action = {
-    'shoulder_pan.pos': 4.13739266,
-    'shoulder_lift.pos': -9.21443737,
-    'elbow_flex.pos': -1.42267095,
-    'wrist_flex.pos': 78.72523686,
-    'wrist_roll.pos': 2.53860246,
-    'gripper.pos': 18.26452064
-    }
+    "shoulder_pan.pos": 8.0,
+    "shoulder_lift.pos": -99.0,
+    "elbow_flex.pos": 95.0,
+    "wrist_flex.pos": 69.0,
+    "wrist_roll.pos": 2.0,
+    "gripper.pos": 2.0,
+}
 
 # 双臂 idle_action (需要根据实际机械臂调整数值)
 
@@ -96,7 +105,7 @@ ROBOT_CONFIGS = {
     "so101": {
         "state_keys": ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos",
                        "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"],
-        "camera_mapping": {"front_view": "up", "left_wrist_view": "wrist"},
+        "camera_mapping": {"face_view": "up", "left_wrist_view": "wrist"},
         "idle_action": so101_idle_action,
         "state_dim": 6,
     },
@@ -142,7 +151,7 @@ class ControlConfig:
     # teleop: TeleoperatorConfig
     robot: RobotConfig
     # Limit the maximum frames per second.
-    fps: int = 60
+    fps: int = 12
     teleop_time_s: float | None = None
     # Display all cameras on screen
     display_data: bool = False
@@ -197,6 +206,7 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
 
     action_plan = collections.deque()
     video_initialized = False
+    t2 = 0
     while True:
         loop_start = time.perf_counter()
         observation = robot.get_observation()
@@ -249,7 +259,11 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
             else:
                 # Standard mode: use deque for action chunking
                 if not action_plan:
+                    t3 = t1 = time.time()
                     action_chunk = client.infer(element)["action"][0]
+                    print("excu time: ", t3-t2)
+                    t2 = time.time()
+                    print("infer time: ", t2-t1)
                     action_plan.extend(action_chunk)
                 action = action_plan.popleft()
             print("Action chunk: ", action)
