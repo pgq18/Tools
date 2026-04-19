@@ -13,7 +13,6 @@ from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraCon
 from lerobot.robots import (  # noqa: F401
     Robot,
     RobotConfig,
-    bi_alicia_d_follower,
     bi_so100_follower,
     hope_jr,
     koch_follower,
@@ -21,6 +20,10 @@ from lerobot.robots import (  # noqa: F401
     so100_follower,
     so101_follower,
 )
+try:
+    from lerobot.robots import bi_alicia_d_follower  # noqa: F401
+except ImportError:
+    pass
 from lerobot.teleoperators import (  # noqa: F401
     Teleoperator,
     TeleoperatorConfig,
