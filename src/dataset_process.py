@@ -57,7 +57,12 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 # 数据集加载和信息显示
 # ============================================================================
 
-def load_dataset(dataset_path: str, episodes: Optional[list] = None, tolerance_s: float = 0.1) -> LeRobotDataset:
+def load_dataset(
+    dataset_path: str,
+    episodes: Optional[list] = None,
+    tolerance_s: float = 0.1,
+    video_backend: Optional[str] = None,
+) -> LeRobotDataset:
     """
     加载 LeRobot 数据集
 
@@ -65,6 +70,7 @@ def load_dataset(dataset_path: str, episodes: Optional[list] = None, tolerance_s
         dataset_path: 数据集路径
         episodes: 要加载的 episode 索引列表，None 表示加载全部
         tolerance_s: 时间戳容差（秒），默认 0.1s，用于处理偏移后的数据集
+        video_backend: 视频解码后端，可选 "torchcodec"、"pyav"、"video_reader"
 
     Returns:
         LeRobotDataset 实例
@@ -79,6 +85,8 @@ def load_dataset(dataset_path: str, episodes: Optional[list] = None, tolerance_s
     kwargs = {"repo_id": repo_id, "root": path, "tolerance_s": tolerance_s}
     if episodes is not None:
         kwargs["episodes"] = episodes
+    if video_backend is not None:
+        kwargs["video_backend"] = video_backend
 
     dataset = LeRobotDataset(**kwargs)
     return dataset
@@ -944,6 +952,137 @@ def apply_time_offsets(
     print("完成!")
 
 
+def trim_episodes(
+    dataset: LeRobotDataset,
+    output_path: str,
+    trim_start_seconds: float = 0.0,
+    trim_end_seconds: float = 0.0,
+):
+    """
+    截断每个 episode 的首尾指定秒数，生成新数据集
+
+    Args:
+        dataset: 源数据集
+        output_path: 输出路径
+        trim_start_seconds: 截断开头的秒数
+        trim_end_seconds: 截断结尾的秒数
+    """
+    import json
+    import shutil
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    fps = dataset.meta.fps
+    trim_start_frames = int(trim_start_seconds * fps)
+    trim_end_frames = int(trim_end_seconds * fps)
+
+    print(f"正在截断 episodes...")
+    print(f"  截断开头: {trim_start_seconds}s ({trim_start_frames} 帧)")
+    print(f"  截断结尾: {trim_end_seconds}s ({trim_end_frames} 帧)")
+    print(f"  原数据集: {dataset.meta.total_episodes} episodes, {dataset.meta.total_frames} frames")
+    print(f"  输出路径: {output_path}")
+
+    output_dir = Path(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. 复制 meta 和 videos 目录
+    shutil.copytree(dataset.root / "meta", output_dir / "meta", dirs_exist_ok=True)
+    if (dataset.root / "videos").exists():
+        shutil.copytree(dataset.root / "videos", output_dir / "videos", dirs_exist_ok=True)
+
+    # 2. 处理 data 目录
+    total_frames_removed = 0
+    episode_new_ranges = {}
+    global_index = 0
+
+    for data_file in sorted((dataset.root / "data").rglob("*.parquet")):
+        relative_path = data_file.relative_to(dataset.root / "data")
+        output_file = output_dir / "data" / relative_path
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        df = pq.read_table(data_file).to_pandas()
+        new_dfs = []
+
+        for ep_idx in sorted(df["episode_index"].unique()):
+            ep_df = df[df["episode_index"] == ep_idx].copy()
+            original_length = len(ep_df)
+
+            new_start_idx = global_index
+
+            start = trim_start_frames
+            end = len(ep_df) - trim_end_frames
+            if end <= start:
+                print(f"  警告: Episode {ep_idx} 截断后为空 ({original_length} 帧)，跳过")
+                total_frames_removed += original_length
+                continue
+
+            ep_df = ep_df.iloc[start:end].copy()
+            new_length = len(ep_df)
+
+            ep_df["frame_index"] = range(new_length)
+            ep_df["timestamp"] = ep_df["frame_index"] / fps
+            ep_df["index"] = range(global_index, global_index + new_length)
+
+            new_dfs.append(ep_df)
+
+            episode_new_ranges[ep_idx] = {
+                "from_index": new_start_idx,
+                "to_index": global_index + new_length,
+                "new_length": new_length,
+            }
+            global_index += new_length
+            total_frames_removed += original_length - new_length
+
+        if new_dfs:
+            new_df = pd.concat(new_dfs, ignore_index=False).reset_index(drop=True)
+            table = pa.Table.from_pandas(new_df, preserve_index=False)
+            pq.write_table(table, output_file)
+        else:
+            empty_df = df.iloc[0:0].reset_index(drop=True)
+            table = pa.Table.from_pandas(empty_df, preserve_index=False)
+            pq.write_table(table, output_file)
+
+    # 3. 更新 episodes 元数据
+    for ep_file in sorted((output_dir / "meta" / "episodes").rglob("*.parquet")):
+        df = pq.read_table(ep_file).to_pandas()
+
+        for ep_idx in df["episode_index"].unique():
+            if ep_idx not in episode_new_ranges:
+                continue
+            r = episode_new_ranges[ep_idx]
+            df.loc[df["episode_index"] == ep_idx, "length"] = r["new_length"]
+            df.loc[df["episode_index"] == ep_idx, "dataset_from_index"] = r["from_index"]
+            df.loc[df["episode_index"] == ep_idx, "dataset_to_index"] = r["to_index"]
+
+            # 更新视频时间戳：from_timestamp 后移 trim_start_seconds
+            for video_key in dataset.meta.video_keys:
+                from_col = f"videos/{video_key}/from_timestamp"
+                to_col = f"videos/{video_key}/to_timestamp"
+                if from_col in df.columns and to_col in df.columns:
+                    mask = df["episode_index"] == ep_idx
+                    df.loc[mask, from_col] = df.loc[mask, from_col] + trim_start_seconds
+                    df.loc[mask, to_col] = df.loc[mask, to_col] - trim_end_seconds
+
+        df = df.reset_index(drop=True)
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        pq.write_table(table, ep_file)
+
+    # 4. 更新 info.json
+    info_path = output_dir / "meta" / "info.json"
+    with open(info_path) as f:
+        info = json.load(f)
+    info["total_frames"] -= total_frames_removed
+    with open(info_path, "w") as f:
+        json.dump(info, f, indent=4)
+
+    print(f"\n截断统计:")
+    print(f"  总共删除帧数: {total_frames_removed}")
+    print(f"  新数据集: {dataset.meta.total_episodes} episodes, {dataset.meta.total_frames - total_frames_removed} frames")
+    print(f"  保存位置: {output_dir}")
+    print("完成!")
+
+
 # ============================================================================
 # 交互式模式
 # ============================================================================
@@ -1143,12 +1282,23 @@ def main():
                         help="要对比的偏移值列表，逗号分隔，如 '-0.1,0,0.1'")
     parser.add_argument("--tolerance", type=float, default=0.1,
                         help="时间戳容差 (秒)，默认 0.1s，用于处理偏移后的数据集")
+    parser.add_argument("--video-backend", type=str, default=None,
+                        choices=["torchcodec", "pyav", "video_reader"],
+                        help="视频解码后端，默认自动选择")
+
+    # 截断相关参数
+    parser.add_argument("--trim", action="store_true",
+                        help="截断每个 episode 的首尾指定秒数")
+    parser.add_argument("--trim-start", type=float, default=0.0,
+                        help="截断开头的秒数，默认 0")
+    parser.add_argument("--trim-end", type=float, default=0.0,
+                        help="截断结尾的秒数，默认 0")
 
     args = parser.parse_args()
 
     # 加载数据集
     try:
-        dataset = load_dataset(args.dataset_path, tolerance_s=args.tolerance)
+        dataset = load_dataset(args.dataset_path, tolerance_s=args.tolerance, video_backend=args.video_backend)
         print(f"成功加载数据集: {dataset.repo_id}")
     except Exception as e:
         print(f"加载数据集失败: {e}")
@@ -1254,6 +1404,15 @@ def main():
         generate_offset_comparison_grid(
             dataset, args.episode, video_key, frame_indices, offsets, args.output
         )
+
+    elif args.trim:
+        if not args.output:
+            print("错误: --trim 需要 --output 参数")
+            sys.exit(1)
+        if args.trim_start <= 0 and args.trim_end <= 0:
+            print("错误: --trim-start 和 --trim-end 至少一个大于 0")
+            sys.exit(1)
+        trim_episodes(dataset, args.output, args.trim_start, args.trim_end)
 
     elif args.interactive:
         interactive_mode(dataset)

@@ -23,14 +23,28 @@
 #     --output ./comparison.png
 
 python src/dataset_process.py \
-    --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321_offset \
+    --dataset-path /home/pengguanqi/Datasets/so101_pap_20260429_offset_trimmed \
     --measure-offset \
-    --episode 151 \
-    --tolerance 0.04
+    --episode 2 \
+    --tolerance 0.13 \
+    --video-backend pyav
 
 # python src/dataset_process.py \
-#     --dataset-path /home/pengguanqi/Datasets/so101_pap151_20260321 \
+#     --dataset-path /home/pengguanqi/Datasets/so101_pap_20260429 \
 #     --apply-offset \
-#     --offset-config calibration/dataset/offset_config_so101_pap151_20260321.yamloffset_config_so101_pap151_20260321.yaml \
-#     --output /home/pengguanqi/Datasets/so101_pap151_20260321_offset \
-#     --tolerance 0.04
+#     --offset-config /tmp/offset_config_so101_pap_20260429.yaml \
+#     --output /home/pengguanqi/Datasets/so101_pap_20260429_offset \
+#     --tolerance 0.13
+
+# trim episodes
+# python src/dataset_process.py \
+#     --dataset-path /home/pengguanqi/Datasets/so101_pap_20260429_offset \
+#     --trim --trim-start 2.0 --trim-end 1.0 \
+#     --output /home/pengguanqi/Datasets/so101_pap_20260429_offset_trimmed \
+#     --video-backend pyav
+
+# python src/dataset_process.py \
+#     --dataset-path /home/pengguanqi/Datasets/so101_pap_20260429_offset \
+#     --trim --trim-start 3.7 \
+#     --output /home/pengguanqi/Datasets/so101_pap_20260429_offset_trimmed \
+#     --video-backend pyav
