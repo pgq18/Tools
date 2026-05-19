@@ -123,6 +123,36 @@ ROBOT_CONFIGS = {
     }
 }
 
+def interpolate_new_chunk(last_action, new_chunk, interp_steps):
+    """Linearly interpolate between last action and new chunk at boundary."""
+    if interp_steps <= 0:
+        return new_chunk
+    chunk = new_chunk.copy()
+    steps = min(interp_steps, len(chunk))
+    for i in range(steps):
+        alpha = (i + 1) / interp_steps
+        chunk[i] = (1 - alpha) * last_action + alpha * new_chunk[i]
+    return chunk
+
+
+def mean_filter_deque(action_deque, window_size):
+    """Apply sliding-window mean filter to the action deque in-place."""
+    if window_size <= 1:
+        return
+    if window_size % 2 == 0:
+        window_size += 1
+    half_w = window_size // 2
+    n = len(action_deque)
+    items = list(action_deque)
+    filtered = []
+    for i in range(n):
+        start = max(0, i - half_w)
+        end = min(n, i + half_w + 1)
+        filtered.append(np.mean(items[start:end], axis=0))
+    action_deque.clear()
+    action_deque.extend(filtered)
+
+
 def keyboard_listener():
     """监听键盘输入，在单独的线程中运行"""
     global RUNNING
@@ -177,6 +207,10 @@ class ControlConfig:
     rtc_d: int = 8
     # RTC: action horizon for the broker
     rtc_action_horizon: int = 32
+    # Smoothing: enable linear interpolation + mean filtering
+    smooth: bool = True
+    smooth_interp_steps: int = 8
+    smooth_filter_window: int = 5
 
     def __post_init__(self):
         if self.dataset_names is None:
@@ -185,7 +219,8 @@ class ControlConfig:
 def control_loop(robot: Robot, client, fps: int, display_data: bool = False, task_description: str | None = None,
                  record_video: bool = False, video_output_dir: str = "./recorded_videos",
                  video_writer_ref = None, robot_type: str = "so101", dataset_names: list[str] = None,
-                 broker: ActionChunkBroker | None = None):
+                 broker: ActionChunkBroker | None = None, smooth: bool = True,
+                 smooth_interp_steps: int = 8, smooth_filter_window: int = 5):
     # 获取机器人配置
     robot_config = ROBOT_CONFIGS[robot_type]
     state_keys = robot_config["state_keys"]
@@ -208,6 +243,7 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
         print(f"准备录制视频，输出目录: {video_output_dir}")
 
     action_plan = collections.deque()
+    last_action = None
     video_initialized = False
     t2 = 0
     while True:
@@ -267,7 +303,13 @@ def control_loop(robot: Robot, client, fps: int, display_data: bool = False, tas
                     print("excu time: ", t3-t2)
                     t2 = time.time()
                     print("infer time: ", t2-t1)
+                    if smooth and last_action is not None:
+                        action_chunk = interpolate_new_chunk(last_action, action_chunk, smooth_interp_steps)
                     action_plan.extend(action_chunk)
+                    if smooth:
+                        mean_filter_deque(action_plan, smooth_filter_window)
+                if len(action_plan) == 1 and smooth:
+                    last_action = action_plan[0].copy()
                 action = action_plan.popleft()
             print("Action chunk: ", action)
 
@@ -318,7 +360,9 @@ def control_robot(cfg: ControlConfig):
     try:
         control_loop(robot, client, cfg.fps, cfg.display_data, cfg.task_description,
                      cfg.record_video, cfg.video_output_dir, video_writer_ref, cfg.robot_type,
-                     cfg.dataset_names, broker=broker)
+                     cfg.dataset_names, broker=broker, smooth=cfg.smooth,
+                     smooth_interp_steps=cfg.smooth_interp_steps,
+                     smooth_filter_window=cfg.smooth_filter_window)
     except KeyboardInterrupt:
         pass
     finally:
