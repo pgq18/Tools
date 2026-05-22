@@ -21,9 +21,9 @@ fi
 
 if [ -z "$MOCK_FLAG" ]; then
     # Real robot configuration
-    export SERIAL_PORT=${SERIAL_PORT:-/dev/ttyACM0}
+    export SERIAL_PORT=${SERIAL_PORT:-COM3}
     export CAMERA_UP_INDEX=${CAMERA_UP_INDEX:-045322072659}
-    export CAMERA_WRIST_INDEX=${CAMERA_WRIST_INDEX:-18}
+    export CAMERA_WRIST_INDEX=${CAMERA_WRIST_INDEX:-1}
     export ROBOT_ID=${ROBOT_ID:-my_awesome_follower_arm}
 
     python src/so101_robot_server.py \

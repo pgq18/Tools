@@ -21,6 +21,7 @@ Usage:
 """
 
 import asyncio
+import collections
 import logging
 import socket
 import traceback
@@ -64,6 +65,45 @@ SO101_IDLE_ACTION = {
     "gripper.pos": 2.0,
 }
 
+STATE_KEYS = [
+    "shoulder_pan.pos",
+    "shoulder_lift.pos",
+    "elbow_flex.pos",
+    "wrist_flex.pos",
+    "wrist_roll.pos",
+    "gripper.pos",
+]
+
+
+def interpolate_new_chunk(last_action, new_chunk, interp_steps):
+    """Linearly interpolate between last action and new chunk at boundary."""
+    if interp_steps <= 0:
+        return new_chunk
+    chunk = new_chunk.copy()
+    steps = min(interp_steps, len(chunk))
+    for i in range(steps):
+        alpha = (i + 1) / interp_steps
+        chunk[i] = (1 - alpha) * last_action + alpha * new_chunk[i]
+    return chunk
+
+
+def mean_filter_deque(action_deque, window_size):
+    """Apply sliding-window mean filter to the action deque in-place."""
+    if window_size <= 1:
+        return
+    if window_size % 2 == 0:
+        window_size += 1
+    half_w = window_size // 2
+    n = len(action_deque)
+    items = list(action_deque)
+    filtered = []
+    for i in range(n):
+        start = max(0, i - half_w)
+        end = min(n, i + half_w + 1)
+        filtered.append(np.mean(items[start:end], axis=0))
+    action_deque.clear()
+    action_deque.extend(filtered)
+
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +115,8 @@ class RobotServerConfig:
     host: str = "0.0.0.0"
     robot_type: str = "so101"
     mock: bool = False
+    reset_interp_steps: int = 20
+    reset_step_delay: float = 0.05
 
 
 class SO101RobotServer:
@@ -158,6 +200,9 @@ class SO101RobotServer:
         """Send action to robot (or log in mock mode)."""
         try:
             self._last_action = action
+            if self._config.robot_type == "so101":
+                action["gripper.pos"] = 0.0 if action["gripper.pos"] < 8.0 else action["gripper.pos"]
+                action["gripper.pos"] = action["gripper.pos"] + 3.0
             if self._config.mock:
                 logger.info(f"[Mock] Received action: {action}")
             else:
@@ -170,13 +215,31 @@ class SO101RobotServer:
             return {"success": False, "error": str(e)}
 
     async def _reset(self) -> Dict[str, Any]:
-        """Reset robot to idle position."""
+        """Reset robot to idle position with smooth interpolation."""
         try:
             if self._config.mock:
                 logger.info("[Mock] Reset to idle position")
             else:
                 loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self._robot.send_action, SO101_IDLE_ACTION)
+                obs = await loop.run_in_executor(None, self._robot.get_observation)
+                current = np.array([obs[key] for key in STATE_KEYS])
+                target = np.array([SO101_IDLE_ACTION[key] for key in STATE_KEYS])
+
+                # Build interpolation chunk: current → target
+                chunk = np.linspace(current, target, self._config.reset_interp_steps)
+                action_deque = collections.deque(chunk)
+                mean_filter_deque(action_deque, 5)
+
+                logger.info(f"Resetting to idle over {len(action_deque)} steps")
+                for action_vec in action_deque:
+                    action = {STATE_KEYS[j]: float(action_vec[j]) for j in range(len(STATE_KEYS))}
+                    if self._config.robot_type == "so101":
+                        action["gripper.pos"] = 0.0 if action["gripper.pos"] < 8.0 else action["gripper.pos"]
+                        action["gripper.pos"] = action["gripper.pos"] + 3.0
+                    await loop.run_in_executor(None, self._robot.send_action, action)
+                    await asyncio.sleep(self._config.reset_step_delay)
+                logger.info("Reset complete")
+
             return {"success": True}
         except Exception as e:
             logger.error(f"Error resetting: {e}")
