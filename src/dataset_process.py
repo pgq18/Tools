@@ -7,7 +7,8 @@
 2. 可视化 episode 的动作轨迹
 3. 删除指定 episodes 并保存为新数据集
 4. 时间偏移测量和调节
-5. 交互式命令行界面
+5. 合并多个数据集
+6. 交互式命令行界面
 
 Usage:
     # 显示数据集信息
@@ -18,6 +19,9 @@ Usage:
 
     # 删除指定 episodes
     python dataset_process.py --dataset-path /path/to/dataset --delete-episodes 0,1 --output /path/to/output
+
+    # 合并两个数据集
+    python dataset_process.py --dataset-path /path/to/dataset_a --merge-with /path/to/dataset_b --output /path/to/output
 
     # 测量时间偏移
     python dataset_process.py --dataset-path /path/to/dataset --measure-offset --episode 0
@@ -30,7 +34,10 @@ Usage:
 """
 
 import argparse
+import copy
+import json
 import logging
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -49,8 +56,10 @@ logging.basicConfig(
 # 从本地 lerobot 源码导入
 sys.path.insert(0, str(Path(__file__).parent / "lerobot" / "src"))
 
+from lerobot.datasets.compute_stats import aggregate_stats
 from lerobot.datasets.dataset_tools import delete_episodes
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.utils import write_stats
 
 
 # ============================================================================
@@ -512,6 +521,322 @@ def delete_selected_episodes(dataset: LeRobotDataset, episode_indices: list,
     print(f"  新数据集: {new_dataset.meta.total_episodes} episodes, {new_dataset.meta.total_frames} frames")
     print(f"  保存位置: {new_dataset.root}")
     print("完成!")
+
+
+# ============================================================================
+# 合并数据集功能
+# ============================================================================
+
+def _next_chunk_file_index(chunk_idx: int, file_idx: int, chunks_size: int) -> tuple[int, int]:
+    """返回 LeRobot chunk/file 的下一个位置。"""
+    if file_idx >= chunks_size - 1:
+        return chunk_idx + 1, 0
+    return chunk_idx, file_idx + 1
+
+
+def _load_episode_tables(dataset_root: Path) -> list[tuple[Path, pd.DataFrame]]:
+    import pyarrow.parquet as pq
+
+    episode_files = sorted((dataset_root / "meta" / "episodes").rglob("*.parquet"))
+    if not episode_files:
+        raise FileNotFoundError(f"未找到 episode 元数据: {dataset_root / 'meta' / 'episodes'}")
+
+    return [(path, pq.read_table(path).to_pandas()) for path in episode_files]
+
+
+def _concat_episode_tables(episode_tables: list[tuple[Path, pd.DataFrame]]) -> pd.DataFrame:
+    if not episode_tables:
+        return pd.DataFrame()
+    return pd.concat([df for _, df in episode_tables], ignore_index=True)
+
+
+def _validate_merge_compatible(datasets: list[LeRobotDataset]):
+    base = datasets[0].meta
+    for other in datasets[1:]:
+        meta = other.meta
+        if meta.robot_type != base.robot_type:
+            raise ValueError(f"robot_type 不一致: {base.robot_type} vs {meta.robot_type}")
+        if meta.fps != base.fps:
+            raise ValueError(f"fps 不一致: {base.fps} vs {meta.fps}")
+        if meta.features != base.features:
+            raise ValueError("features 不一致，不能直接合并")
+        if meta.data_path != base.data_path:
+            raise ValueError(f"data_path 不一致: {base.data_path} vs {meta.data_path}")
+        if meta.video_path != base.video_path:
+            raise ValueError(f"video_path 不一致: {base.video_path} vs {meta.video_path}")
+        if not meta.tasks.equals(base.tasks):
+            raise ValueError("tasks.parquet 不一致，当前合并功能只支持任务表完全一致的数据集")
+
+
+def _shift_stats(stats: dict, episode_offset: int, frame_offset: int) -> dict:
+    shifted = copy.deepcopy(stats)
+    for feature, offset in {"episode_index": episode_offset, "index": frame_offset}.items():
+        if not offset or feature not in shifted:
+            continue
+        for stat_name, value in shifted[feature].items():
+            if stat_name in {"min", "max", "mean"} or (
+                stat_name.startswith("q") and stat_name[1:].isdigit()
+            ):
+                shifted[feature][stat_name] = np.asarray(value) + offset
+    return shifted
+
+
+def _shift_flat_stats_columns(df: pd.DataFrame, feature: str, offset: int):
+    if not offset:
+        return
+
+    prefix = f"stats/{feature}/"
+    for col in df.columns:
+        if not col.startswith(prefix):
+            continue
+        stat_name = col[len(prefix):]
+        if stat_name in {"min", "max", "mean"} or (
+            stat_name.startswith("q") and stat_name[1:].isdigit()
+        ):
+            df[col] = df[col].apply(lambda value: np.asarray(value) + offset)
+
+
+def _series_to_stats_array(series: pd.Series) -> np.ndarray:
+    first_value = series.iloc[0]
+    if isinstance(first_value, (np.ndarray, list, tuple)):
+        return np.stack(series.to_numpy())
+    return series.to_numpy().reshape(-1, 1)
+
+
+def _compute_array_stats(values: np.ndarray) -> dict[str, np.ndarray]:
+    return {
+        "min": np.min(values, axis=0),
+        "max": np.max(values, axis=0),
+        "mean": np.mean(values, axis=0),
+        "std": np.std(values, axis=0),
+        "count": np.array([values.shape[0]]),
+        "q01": np.quantile(values, 0.01, axis=0),
+        "q10": np.quantile(values, 0.10, axis=0),
+        "q50": np.quantile(values, 0.50, axis=0),
+        "q90": np.quantile(values, 0.90, axis=0),
+        "q99": np.quantile(values, 0.99, axis=0),
+    }
+
+
+def _recompute_data_stats(
+    output_dir: Path,
+    features: dict,
+    base_stats: Optional[dict] = None,
+) -> dict:
+    import pyarrow.parquet as pq
+
+    stats = copy.deepcopy(base_stats) if base_stats is not None else {}
+    data_keys = [key for key, feature in features.items() if feature["dtype"] != "video"]
+    values_by_key = {key: [] for key in data_keys}
+
+    for data_file in sorted((output_dir / "data").rglob("*.parquet")):
+        df = pq.read_table(data_file).to_pandas()
+        for key in data_keys:
+            if key in df.columns and len(df[key]) > 0:
+                values_by_key[key].append(_series_to_stats_array(df[key]))
+
+    for key, chunks in values_by_key.items():
+        if not chunks:
+            continue
+        values = np.concatenate(chunks, axis=0)
+        stats[key] = _compute_array_stats(values)
+
+    return stats
+
+
+def _write_parquet(df: pd.DataFrame, output_file: Path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(df.reset_index(drop=True), preserve_index=False)
+    pq.write_table(table, output_file)
+
+
+def _format_data_path(dataset: LeRobotDataset, chunk_idx: int, file_idx: int) -> Path:
+    return dataset.root / dataset.meta.data_path.format(chunk_index=chunk_idx, file_index=file_idx)
+
+
+def _format_video_path(dataset: LeRobotDataset, video_key: str, chunk_idx: int, file_idx: int) -> Path:
+    return dataset.root / dataset.meta.video_path.format(
+        video_key=video_key,
+        chunk_index=chunk_idx,
+        file_index=file_idx,
+    )
+
+
+def merge_datasets(
+    base_dataset: LeRobotDataset,
+    merge_paths: list[str],
+    output_path: str,
+    tolerance_s: float = 0.1,
+    video_backend: Optional[str] = None,
+):
+    """
+    合并多个本地 LeRobot 数据集。
+
+    使用 base_dataset 作为第一个数据集，按 merge_paths 顺序追加后续数据集。
+    输出数据会重写 episode_index、全局 index 以及 parquet/video 文件引用。
+    """
+    if not merge_paths:
+        print("错误: 没有指定要合并的数据集")
+        return
+
+    output_dir = Path(output_path)
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise FileExistsError(f"输出目录已存在且非空，为避免混入旧文件请先换一个输出路径: {output_dir}")
+
+    datasets = [base_dataset]
+    for path in merge_paths:
+        datasets.append(load_dataset(path, tolerance_s=tolerance_s, video_backend=video_backend))
+
+    _validate_merge_compatible(datasets)
+
+    source_roots = [dataset.root.resolve() for dataset in datasets]
+    if output_dir.resolve() in source_roots:
+        raise ValueError("输出目录不能与任一源数据集目录相同")
+
+    print("正在合并数据集...")
+    for idx, dataset in enumerate(datasets):
+        print(
+            f"  [{idx}] {dataset.root}: "
+            f"{dataset.meta.total_episodes} episodes, {dataset.meta.total_frames} frames"
+        )
+    print(f"  输出路径: {output_dir}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "meta").mkdir(parents=True, exist_ok=True)
+
+    base_info = copy.deepcopy(datasets[0].meta.info)
+    chunks_size = int(base_info.get("chunks_size", 1000))
+
+    shutil.copy2(datasets[0].root / "meta" / "tasks.parquet", output_dir / "meta" / "tasks.parquet")
+
+    next_data_chunk, next_data_file = 0, 0
+    next_meta_chunk, next_meta_file = 0, 0
+    next_video_index = {key: (0, 0) for key in datasets[0].meta.video_keys}
+
+    episode_offset = 0
+    frame_offset = 0
+    shifted_stats = []
+
+    for dataset in datasets:
+        episode_tables = _load_episode_tables(dataset.root)
+        all_episodes = _concat_episode_tables(episode_tables)
+
+        data_file_map: dict[tuple[int, int], tuple[int, int]] = {}
+        data_pairs = sorted(
+            {
+                (int(row["data/chunk_index"]), int(row["data/file_index"]))
+                for _, row in all_episodes.iterrows()
+            }
+        )
+
+        for src_chunk, src_file in data_pairs:
+            dst_chunk, dst_file = next_data_chunk, next_data_file
+            data_file_map[(src_chunk, src_file)] = (dst_chunk, dst_file)
+
+            src_path = _format_data_path(dataset, src_chunk, src_file)
+            if not src_path.exists():
+                raise FileNotFoundError(f"数据 parquet 不存在: {src_path}")
+
+            import pyarrow.parquet as pq
+
+            df = pq.read_table(src_path).to_pandas()
+            df["episode_index"] = df["episode_index"] + episode_offset
+            df["index"] = df["index"] + frame_offset
+
+            dst_path = output_dir / base_info["data_path"].format(
+                chunk_index=dst_chunk,
+                file_index=dst_file,
+            )
+            _write_parquet(df, dst_path)
+            next_data_chunk, next_data_file = _next_chunk_file_index(
+                next_data_chunk, next_data_file, chunks_size
+            )
+
+        video_file_maps: dict[str, dict[tuple[int, int], tuple[int, int]]] = {}
+        for video_key in dataset.meta.video_keys:
+            video_file_maps[video_key] = {}
+            chunk_col = f"videos/{video_key}/chunk_index"
+            file_col = f"videos/{video_key}/file_index"
+            video_pairs = sorted(
+                {(int(row[chunk_col]), int(row[file_col])) for _, row in all_episodes.iterrows()}
+            )
+
+            for src_chunk, src_file in video_pairs:
+                dst_chunk, dst_file = next_video_index[video_key]
+                video_file_maps[video_key][(src_chunk, src_file)] = (dst_chunk, dst_file)
+
+                src_path = _format_video_path(dataset, video_key, src_chunk, src_file)
+                if not src_path.exists():
+                    raise FileNotFoundError(f"视频文件不存在: {src_path}")
+
+                dst_path = output_dir / base_info["video_path"].format(
+                    video_key=video_key,
+                    chunk_index=dst_chunk,
+                    file_index=dst_file,
+                )
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, dst_path)
+                next_video_index[video_key] = _next_chunk_file_index(dst_chunk, dst_file, chunks_size)
+
+        for _, ep_df in episode_tables:
+            dst_chunk, dst_file = next_meta_chunk, next_meta_file
+            df = ep_df.copy()
+
+            _shift_flat_stats_columns(df, "episode_index", episode_offset)
+            _shift_flat_stats_columns(df, "index", frame_offset)
+
+            df["episode_index"] = df["episode_index"] + episode_offset
+            df["dataset_from_index"] = df["dataset_from_index"] + frame_offset
+            df["dataset_to_index"] = df["dataset_to_index"] + frame_offset
+            df["meta/episodes/chunk_index"] = dst_chunk
+            df["meta/episodes/file_index"] = dst_file
+
+            for row_idx, row in df.iterrows():
+                src_data_key = (int(row["data/chunk_index"]), int(row["data/file_index"]))
+                new_data_chunk, new_data_file = data_file_map[src_data_key]
+                df.at[row_idx, "data/chunk_index"] = new_data_chunk
+                df.at[row_idx, "data/file_index"] = new_data_file
+
+                for video_key in dataset.meta.video_keys:
+                    chunk_col = f"videos/{video_key}/chunk_index"
+                    file_col = f"videos/{video_key}/file_index"
+                    src_video_key = (int(row[chunk_col]), int(row[file_col]))
+                    new_video_chunk, new_video_file = video_file_maps[video_key][src_video_key]
+                    df.at[row_idx, chunk_col] = new_video_chunk
+                    df.at[row_idx, file_col] = new_video_file
+
+            dst_path = output_dir / "meta" / "episodes" / f"chunk-{dst_chunk:03d}" / f"file-{dst_file:03d}.parquet"
+            _write_parquet(df, dst_path)
+            next_meta_chunk, next_meta_file = _next_chunk_file_index(
+                next_meta_chunk, next_meta_file, chunks_size
+            )
+
+        if dataset.meta.stats is not None:
+            shifted_stats.append(_shift_stats(dataset.meta.stats, episode_offset, frame_offset))
+
+        episode_offset += dataset.meta.total_episodes
+        frame_offset += dataset.meta.total_frames
+
+    total_episodes = sum(dataset.meta.total_episodes for dataset in datasets)
+    total_frames = sum(dataset.meta.total_frames for dataset in datasets)
+
+    base_info["total_episodes"] = total_episodes
+    base_info["total_frames"] = total_frames
+    base_info["total_tasks"] = datasets[0].meta.total_tasks
+    base_info["splits"] = {"train": f"0:{total_episodes}"}
+
+    with open(output_dir / "meta" / "info.json", "w") as f:
+        json.dump(base_info, f, indent=4)
+
+    base_stats = aggregate_stats(shifted_stats) if shifted_stats else None
+    write_stats(_recompute_data_stats(output_dir, base_info["features"], base_stats), output_dir)
+
+    print("\n合并完成:")
+    print(f"  新数据集: {total_episodes} episodes, {total_frames} frames")
+    print(f"  保存位置: {output_dir}")
 
 
 # ============================================================================
@@ -1221,6 +1546,9 @@ def main():
   # 删除指定 episodes
   python dataset_process.py --dataset-path /path/to/dataset --delete-episodes 0,1 --output /path/to/output
 
+  # 合并两个数据集
+  python dataset_process.py --dataset-path /path/to/dataset_a --merge-with /path/to/dataset_b --output /path/to/output
+
   # 测量时间偏移 (交互式)
   python dataset_process.py --dataset-path /path/to/dataset --measure-offset --episode 0
 
@@ -1251,8 +1579,10 @@ def main():
                         help="显示状态分布图")
     parser.add_argument("--delete-episodes", type=str,
                         help="要删除的 episodes，逗号分隔，如 '0,1,5'")
+    parser.add_argument("--merge-with", type=str, action="append",
+                        help="要追加合并的数据集路径，可多次指定")
     parser.add_argument("--output", type=str,
-                        help="输出路径（用于删除操作）")
+                        help="输出路径（用于删除、合并、偏移、截断操作）")
     parser.add_argument("--interactive", action="store_true",
                         help="进入交互模式")
     parser.add_argument("--save", type=str,
@@ -1339,6 +1669,18 @@ def main():
             sys.exit(1)
         indices = [int(x.strip()) for x in args.delete_episodes.split(",")]
         delete_selected_episodes(dataset, indices, args.output)
+
+    elif args.merge_with:
+        if not args.output:
+            print("错误: --merge-with 需要 --output 参数")
+            sys.exit(1)
+        merge_datasets(
+            dataset,
+            args.merge_with,
+            args.output,
+            tolerance_s=args.tolerance,
+            video_backend=args.video_backend,
+        )
 
     elif args.measure_offset:
         # 交互式偏移测量
